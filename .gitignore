@@ -78,3 +78,9 @@ Frameworks/HockeySDK
 
 # Secrets
 bin/StringsScript/Sources/StringsScriptCore/Secrets.swift
+
+# Bazel
+bazel-*
+
+# Tulsi
+*.xcodeproj
