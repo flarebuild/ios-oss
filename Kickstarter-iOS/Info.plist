@@ -23,7 +23,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>$(MARKETING_VERSION)</string>
+	<string>4.4.0</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleURLTypes</key>
@@ -31,7 +31,7 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>appcenter-$(APPCENTER_$(APPCENTER_SCHEME_NAME)_APP_SECRET)</string>
+				<string>appcenter-APPCENTER_RELEASE_APP_SECRET</string>
 				<string>fb69103156693</string>
 			</array>
 		</dict>
@@ -51,7 +51,7 @@
 	<key>Fabric</key>
 	<dict>
 		<key>APIKey</key>
-		<string>$(FABRIC_API_KEY)</string>
+		<string>FABRIC_API_KEY</string>
 		<key>Kits</key>
 		<array>
 			<dict>
