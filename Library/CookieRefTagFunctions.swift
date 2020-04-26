@@ -60,3 +60,4 @@ public func cookieFrom(refTag: RefTag, project: Project) -> HTTPCookie? {
 
   return HTTPCookie(properties: properties)
 }
+
