@@ -1,0 +1,92 @@
+{
+  "additionalFilePaths" : [
+    "/BUILD",
+    "Kickstarter-iOS/BUILD"
+  ],
+  "buildTargets" : [
+    "//:KsApi",
+    "//:Library",
+    "//Kickstarter-iOS:Release",
+    "//Kickstarter-iOS:Sources"
+  ],
+  "optionSet" : {
+    "BazelBuildOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "CommandlineArguments" : {
+      "p" : "$(inherited)"
+    },
+    "EnvironmentVariables" : {
+      "p" : "$(inherited)"
+    },
+    "LaunchActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "LaunchActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "ProjectGenerationBazelStartupOptions" : {
+      "p" : "$(inherited)"
+    },
+    "TestActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "TestActionPreActionScript" : {
+      "p" : "$(inherited)"
+    }
+  },
+  "projectName" : "Kickstarter",
+  "sourceFilters" : [
+    "Frameworks/native-secrets/...",
+    "Frameworks/native-secrets/ios",
+    "Kickstarter-iOS/...",
+    "Kickstarter-iOS/DataSources",
+    "Kickstarter-iOS/Library",
+    "Kickstarter-iOS/Locales",
+    "Kickstarter-iOS/Locales/Base.lproj",
+    "Kickstarter-iOS/Locales/de.lproj",
+    "Kickstarter-iOS/Locales/es.lproj",
+    "Kickstarter-iOS/Locales/fr.lproj",
+    "Kickstarter-iOS/Locales/ja.lproj",
+    "Kickstarter-iOS/ViewModels",
+    "Kickstarter-iOS/Views",
+    "Kickstarter-iOS/Views/Cells",
+    "Kickstarter-iOS/Views/Controllers",
+    "Kickstarter-iOS/Views/HeaderFooterViews",
+    "Kickstarter-iOS/Views/Layouts",
+    "Kickstarter-iOS/Views/ShimmerLoadingViews",
+    "Kickstarter-iOS/Views/Storyboards",
+    "Kickstarter-iOS/Views/Transitions",
+    "KsApi/...",
+    "KsApi/extensions",
+    "KsApi/lib",
+    "KsApi/lib/auth",
+    "KsApi/models",
+    "KsApi/models/lenses",
+    "KsApi/models/templates",
+    "KsApi/mutations",
+    "KsApi/mutations/inputs",
+    "KsApi/queries",
+    "Library/...",
+    "Library/DataSource",
+    "Library/Extensions",
+    "Library/Styles",
+    "Library/Tracking",
+    "Library/ViewModels"
+  ]
+}

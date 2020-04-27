@@ -1,0 +1,13 @@
+{
+  "configDefaults" : {
+    "optionSet" : {
+
+    }
+  },
+  "packages" : [
+    "",
+    "Kickstarter-iOS"
+  ],
+  "projectName" : "Kickstarter",
+  "workspaceRoot" : ".."
+}
