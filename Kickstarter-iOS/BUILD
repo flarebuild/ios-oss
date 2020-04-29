@@ -1,3 +1,5 @@
+package(default_visibility = ["//visibility:public"])
+
 load(
     "@build_bazel_rules_swift//swift:swift.bzl",
     "swift_library",
@@ -28,7 +30,6 @@ swift_library(
         "Views/Storyboards/*.xib",
         "Views/Storyboards/*.storyboard",
     ]),
-    visibility = ["//visibility:public"],
     deps = [
         "//:Alamofire",
         "//:AlamofireImage",
@@ -77,7 +78,6 @@ ios_application(
     ],
     infoplists = ["Info.plist"],
     minimum_os_version = "12.4",
-    visibility = ["//visibility:public"],
     deps = [
         ":Sources",
     ],
