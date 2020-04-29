@@ -13,7 +13,7 @@ public extension UINavigationItem {
 
   #if os(iOS)
     @IBInspectable
-    public var promptLocalizedKey: String {
+    var promptLocalizedKey: String {
       set(key) {
         self.prompt = localizedString(key: key, defaultValue: self.prompt ?? "")
       }
