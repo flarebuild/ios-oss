@@ -9,6 +9,7 @@ final class ActivitiesViewModelTests: TestCase {
 
   fileprivate let activitiesPresent = TestObserver<Bool, Never>()
   fileprivate let clearBadgeValue = TestObserver<(), Never>()
+  fileprivate let erroredBackings = TestObserver<[GraphBacking], Never>()
   fileprivate let isRefreshing = TestObserver<Bool, Never>()
   fileprivate let goToProject = TestObserver<Project, Never>()
   fileprivate let goToSurveyResponse = TestObserver<SurveyResponse, Never>()
@@ -17,6 +18,8 @@ final class ActivitiesViewModelTests: TestCase {
   fileprivate let deleteFindFriendsSection = TestObserver<(), Never>()
   fileprivate let hideEmptyState = TestObserver<(), Never>()
   fileprivate let goToFriends = TestObserver<FriendsSource, Never>()
+  fileprivate let goToManagePledgeProjectParam = TestObserver<Param, Never>()
+  fileprivate let goToManagePledgeBackingParam = TestObserver<Param?, Never>()
   fileprivate let showEmptyStateIsLoggedIn = TestObserver<Bool, Never>()
   fileprivate let showFacebookConnectSection = TestObserver<Bool, Never>()
   fileprivate let showFacebookConnectSectionSource = TestObserver<FriendsSource, Never>()
@@ -31,6 +34,7 @@ final class ActivitiesViewModelTests: TestCase {
 
     self.vm.outputs.activities.map { !$0.isEmpty }.observe(self.activitiesPresent.observer)
     self.vm.outputs.clearBadgeValue.observe(self.clearBadgeValue.observer)
+    self.vm.outputs.erroredBackings.observe(self.erroredBackings.observer)
     self.vm.outputs.hideEmptyState.observe(self.hideEmptyState.observer)
     self.vm.outputs.isRefreshing.observe(self.isRefreshing.observer)
     self.vm.outputs.goToProject.map { $0.0 }.observe(self.goToProject.observer)
@@ -39,6 +43,8 @@ final class ActivitiesViewModelTests: TestCase {
     self.vm.outputs.deleteFindFriendsSection.observe(self.deleteFindFriendsSection.observer)
     self.vm.outputs.goToFriends.observe(self.goToFriends.observer)
     self.vm.outputs.goToSurveyResponse.observe(self.goToSurveyResponse.observer)
+    self.vm.outputs.goToManagePledge.map(first).observe(self.goToManagePledgeProjectParam.observer)
+    self.vm.outputs.goToManagePledge.map(second).observe(self.goToManagePledgeBackingParam.observer)
     self.vm.outputs.showEmptyStateIsLoggedIn.observe(self.showEmptyStateIsLoggedIn.observer)
     self.vm.outputs.showFacebookConnectSection.map { $0.1 }.observe(self.showFacebookConnectSection.observer)
     self.vm.outputs.showFacebookConnectSection.map { $0.0 }
@@ -65,7 +71,7 @@ final class ActivitiesViewModelTests: TestCase {
     self.hideEmptyState.assertValueCount(1, "Dismiss empty state emits.")
 
     AppEnvironment.login(AccessTokenEnvelope(accessToken: "deadbeef", user: User.template))
-    withEnvironment(apiService: MockService(fetchActivitiesResponse: [activity1, activity2])) {
+    withEnvironment(apiService: MockService(fetchActivitiesResponse: [self.activity1, self.activity2])) {
       self.vm.inputs.userSessionStarted()
       self.vm.inputs.viewWillAppear(animated: false)
 
@@ -195,7 +201,7 @@ final class ActivitiesViewModelTests: TestCase {
 
   func testRefreshActivities() {
     withEnvironment(
-      apiService: MockService(fetchActivitiesResponse: [activity1, activity2]),
+      apiService: MockService(fetchActivitiesResponse: [self.activity1, self.activity2]),
       currentUser: .template
     ) {
       self.vm.inputs.viewDidLoad()
@@ -226,12 +232,12 @@ final class ActivitiesViewModelTests: TestCase {
 
     let mockService1 = MockService(
       clearUserUnseenActivityResult: Result.success(.init(activityIndicatorCount: 0)),
-      fetchActivitiesResponse: [activity1, activity2]
+      fetchActivitiesResponse: [self.activity1, self.activity2]
     )
 
     let mockService2 = MockService(
       clearUserUnseenActivityResult: Result.success(.init(activityIndicatorCount: 0)),
-      fetchActivitiesResponse: [activity1, activity2, activity3]
+      fetchActivitiesResponse: [self.activity1, self.activity2, self.activity3]
     )
 
     let user = User.template
@@ -271,12 +277,12 @@ final class ActivitiesViewModelTests: TestCase {
 
     let mockService1 = MockService(
       clearUserUnseenActivityResult: Result.success(.init(activityIndicatorCount: 0)),
-      fetchActivitiesResponse: [activity1, activity2]
+      fetchActivitiesResponse: [self.activity1, self.activity2]
     )
 
     let mockService2 = MockService(
       clearUserUnseenActivityResult: Result.success(.init(activityIndicatorCount: 0)),
-      fetchActivitiesResponse: [activity1, activity2, activity3]
+      fetchActivitiesResponse: [self.activity1, self.activity2, self.activity3]
     )
 
     withEnvironment(
@@ -308,7 +314,6 @@ final class ActivitiesViewModelTests: TestCase {
 
   func testGoToProject() {
     let activity = .template |> Activity.lens.category .~ .backing
-    // swiftlint:disable:next force_unwrapping
     let project = activity.project!
     let refTag = RefTag.activity
 
@@ -521,6 +526,86 @@ final class ActivitiesViewModelTests: TestCase {
         [[surveyResponse], [surveyResponse]],
         "Same unanswered survey emits."
       )
+    }
+  }
+
+  func testGoToManagePledge() {
+    self.goToManagePledgeProjectParam.assertDidNotEmitValue()
+    self.goToManagePledgeBackingParam.assertDidNotEmitValue()
+
+    let backing = GraphBacking.template
+      |> \.project .~ .template
+
+    self.vm.inputs.erroredBackingViewDidTapManage(with: backing)
+
+    guard
+      let projectId = backing.project?.pid,
+      let backingId = decompose(id: backing.id)
+    else {
+      XCTFail("Should have projectId and backingId")
+      return
+    }
+
+    self.goToManagePledgeProjectParam.assertValues([.id(projectId)])
+    self.goToManagePledgeBackingParam.assertValues([.id(backingId)])
+  }
+
+  func testTracking_GoToManagePledge() {
+    withEnvironment(
+      apiService: MockService(fetchActivitiesResponse: [.template]),
+      currentUser: .template
+    ) {
+      self.vm.inputs.viewDidLoad()
+      self.vm.inputs.viewWillAppear(animated: false)
+      self.vm.inputs.userSessionStarted()
+      self.scheduler.advance()
+
+      let backing = GraphBacking.template
+        |> \.project .~ .template
+
+      XCTAssertEqual(self.trackingClient.events, ["Activity Feed Viewed"])
+
+      self.vm.inputs.erroredBackingViewDidTapManage(with: backing)
+
+      XCTAssertEqual(
+        self.trackingClient.events,
+        ["Activity Feed Viewed", "Manage Pledge Button Clicked"]
+      )
+    }
+  }
+
+  func testUpdateUserInEnvironmentOnManagePledgeViewDidFinish() {
+    let user = User.template
+
+    let backing = GraphBacking.template
+      |> \.project .~ .template
+
+    let backings = GraphBackingEnvelope.GraphBackingConnection(nodes: [backing])
+
+    let envelope = GraphBackingEnvelope.template
+      |> \.backings .~ backings
+
+    let backingsResponse = UserEnvelope<GraphBackingEnvelope>(me: envelope)
+
+    let mockService = MockService(fetchGraphUserBackingsResponse: backingsResponse)
+
+    withEnvironment(apiService: mockService, currentUser: user) {
+      self.updateUserInEnvironment.assertDidNotEmitValue()
+      self.erroredBackings.assertDidNotEmitValue()
+
+      self.vm.inputs.managePledgeViewControllerDidFinish()
+
+      self.scheduler.advance()
+
+      self.updateUserInEnvironment.assertValues([user])
+      self.erroredBackings.assertDidNotEmitValue()
+
+      self.vm.inputs.currentUserUpdated()
+
+      self.scheduler.advance()
+
+      self.updateUserInEnvironment.assertValues([user])
+      self.erroredBackings.assertValues([backingsResponse.me.backings.nodes])
     }
   }
 

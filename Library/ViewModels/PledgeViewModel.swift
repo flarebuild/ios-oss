@@ -32,15 +32,18 @@ public protocol PledgeViewModelInputs {
   func applePayButtonTapped()
   func configureWith(project: Project, reward: Reward, refTag: RefTag?, context: PledgeViewContext)
   func creditCardSelected(with paymentSourceId: String)
+  func goToLoginSignupTapped()
   func paymentAuthorizationDidAuthorizePayment(
     paymentData: (displayName: String?, network: String?, transactionIdentifier: String)
   )
   func paymentAuthorizationViewControllerDidFinish()
   func pledgeAmountViewControllerDidUpdate(with data: PledgeAmountData)
+  func pledgeDisclaimerViewDidTapLearnMore()
   func scaFlowCompleted(with result: StripePaymentHandlerActionStatusType, error: Error?)
   func shippingRuleSelected(_ shippingRule: ShippingRule)
   func stripeTokenCreated(token: String?, error: Error?) -> PKPaymentAuthorizationStatus
   func submitButtonTapped()
+  func termsOfUseTapped(with: HelpType)
   func userSessionStarted()
   func viewDidLoad()
 }
@@ -48,15 +51,15 @@ public protocol PledgeViewModelInputs {
 public protocol PledgeViewModelOutputs {
   var beginSCAFlowWithClientSecret: Signal<String, Never> { get }
   var configurePaymentMethodsViewControllerWithValue: Signal<PledgePaymentMethodsValue, Never> { get }
+  var configurePledgeAmountSummaryViewControllerWithData: Signal<PledgeAmountSummaryViewData, Never> { get }
+  var configurePledgeViewCTAContainerView: Signal<PledgeViewCTAContainerViewData, Never> { get }
   var configureStripeIntegration: Signal<StripeConfigurationData, Never> { get }
-  var configureSummaryViewControllerWithData: Signal<(Project, Double), Never> { get }
+  var configureSummaryViewControllerWithData: Signal<PledgeSummaryViewData, Never> { get }
   var configureWithData: Signal<(project: Project, reward: Reward), Never> { get }
-  var confirmationLabelAttributedText: Signal<NSAttributedString, Never> { get }
-  var confirmationLabelHidden: Signal<Bool, Never> { get }
-  var continueViewHidden: Signal<Bool, Never> { get }
   var descriptionViewHidden: Signal<Bool, Never> { get }
   var goToApplePayPaymentAuthorization: Signal<PaymentAuthorizationData, Never> { get }
   var goToThanks: Signal<ThanksPageData, Never> { get }
+  var goToLoginSignup: Signal<(LoginIntent, Project, Reward), Never> { get }
   var notifyDelegateUpdatePledgeDidSucceedWithMessage: Signal<String, Never> { get }
   var notifyPledgeAmountViewControllerShippingAmountChanged: Signal<Double, Never> { get }
   var paymentMethodsViewHidden: Signal<Bool, Never> { get }
@@ -68,10 +71,7 @@ public protocol PledgeViewModelOutputs {
   var shippingLocationViewHidden: Signal<Bool, Never> { get }
   var showApplePayAlert: Signal<(String, String), Never> { get }
   var showErrorBannerWithMessage: Signal<String, Never> { get }
-  var submitButtonEnabled: Signal<Bool, Never> { get }
-  var submitButtonHidden: Signal<Bool, Never> { get }
-  var submitButtonIsLoading: Signal<Bool, Never> { get }
-  var submitButtonTitle: Signal<String, Never> { get }
+  var showWebHelp: Signal<HelpType, Never> { get }
   var title: Signal<String, Never> { get }
 }
 
@@ -96,7 +96,6 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
 
     let backing = project.map { $0.personalization.backing }.skipNil()
 
-    self.confirmationLabelHidden = context.map { $0.confirmationLabelHidden }
     self.descriptionViewHidden = context.map { $0.descriptionViewHidden }
     self.pledgeAmountViewHidden = context.map { $0.pledgeAmountViewHidden }
     self.pledgeAmountSummaryViewHidden = context.map { $0.pledgeAmountSummaryViewHidden }
@@ -123,9 +122,17 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
 
     self.configureWithData = projectAndReward
 
-    self.configureSummaryViewControllerWithData = project
-      .takePairWhen(pledgeTotal)
-      .map { project, total in (project, total) }
+    self.configureSummaryViewControllerWithData = Signal.combineLatest(
+      project,
+      context.map { $0.confirmationLabelHidden }
+    )
+    .takePairWhen(pledgeTotal)
+    .map(unpack)
+    .map { project, confirmationLabelHidden, total in (project, total, confirmationLabelHidden) }
+
+    self.configurePledgeAmountSummaryViewControllerWithData = project
+      .map(pledgeAmountSummaryViewData)
+      .skipNil()
 
     let configurePaymentMethodsViewController = Signal.merge(
       initialData,
@@ -140,22 +147,8 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
         return (user, project, reward, context, refTag)
       }
 
-    let projectAndPledgeTotal = project
-      .combineLatest(with: pledgeTotal)
-
-    self.confirmationLabelAttributedText = projectAndPledgeTotal
-      .map { project, pledgeTotal in
-        attributedConfirmationString(
-          with: project,
-          pledgeTotal: pledgeTotal
-        )
-      }
-
-    self.continueViewHidden = Signal
-      .combineLatest(isLoggedIn, context)
-      .map { $0 || $1.continueViewHidden }
-
-    self.submitButtonHidden = self.continueViewHidden.negate()
+    self.goToLoginSignup = Signal.combineLatest(project, reward, self.goToLoginSignupSignal)
+      .map { (LoginIntent.backProject, $0.0, $0.1) }
 
     self.paymentMethodsViewHidden = Signal.combineLatest(isLoggedIn, context)
       .map { !$0 || $1.paymentMethodsViewHidden }
@@ -190,6 +183,11 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
     let selectedPaymentSourceId = Signal.merge(
       initialData.mapConst(nil),
       self.creditCardSelectedSignal.wrapInOptional()
+    )
+
+    self.showWebHelp = Signal.merge(
+      self.termsOfUseTappedSignal,
+      self.pledgeDisclaimerViewDidTapLearnMoreSignal.mapConst(.trust)
     )
 
     // MARK: - Apple Pay
@@ -445,7 +443,7 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
     )
     .map(allValuesChangedAndValid)
 
-    self.submitButtonEnabled = Signal.merge(
+    let isEnabled = Signal.merge(
       self.viewDidLoadProperty.signal.mapConst(false)
         .take(until: valuesChangedAndValid.ignoreValues()),
       valuesChangedAndValid,
@@ -453,11 +451,6 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
       createOrUpdateEvent.filter { $0.isTerminating }.mapConst(true)
     )
     .skipRepeats()
-
-    self.submitButtonIsLoading = Signal.merge(
-      self.submitButtonTappedSignal.mapConst(true),
-      createOrUpdateEvent.filter { $0.isTerminating }.mapConst(false)
-    )
 
     let isCreateOrUpdateBacking = Signal.merge(
       self.submitButtonTappedSignal.mapConst(true),
@@ -580,7 +573,25 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
 
     self.popToRootViewController = self.notifyDelegateUpdatePledgeDidSucceedWithMessage.ignoreValues()
 
-    self.submitButtonTitle = context.map { $0.submitButtonTitle }
+    let willRetryPaymentMethod = Signal.combineLatest(
+      context,
+      project,
+      selectedPaymentSourceId
+    )
+    .map { context, project, selectedPaymentSourceId -> Bool in
+      context == .fixPaymentMethod
+        && project.personalization.backing?.paymentSource?.id == selectedPaymentSourceId
+    }
+    .skipRepeats()
+
+    self.configurePledgeViewCTAContainerView = Signal.combineLatest(
+      isLoggedIn,
+      isEnabled,
+      context,
+      willRetryPaymentMethod
+    )
+    .map { $0 as PledgeViewCTAContainerViewData }
+
     self.title = context.map { $0.title }
     let contextAndProjectAndPledgeAmount = Signal.combineLatest(context, project, pledgeAmount)
 
@@ -608,28 +619,18 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
 
     initialData
       .observeValues { project, reward, refTag, context in
+        let cookieRefTag = cookieRefTagFor(project: project) ?? refTag
+        let optimizelyProps = optimizelyProperties() ?? [:]
+
+        AppEnvironment.current.optimizelyClient?.track(eventName: "Pledge Screen Viewed")
         AppEnvironment.current.koala.trackCheckoutPaymentPageViewed(
           project: project,
           reward: reward,
           context: TrackingHelpers.pledgeContext(for: context),
-          refTag: refTag
+          refTag: refTag,
+          cookieRefTag: cookieRefTag,
+          optimizelyProperties: optimizelyProps
         )
-      }
-
-    initialData
-      .observeValues { project, _, refTag, _ in
-        let (properties, eventTags) = optimizelyTrackingAttributesAndEventTags(
-          with: project,
-          refTag: refTag
-        )
-
-        try? AppEnvironment.current.optimizelyClient?
-          .track(
-            eventKey: "Pledge Screen Viewed",
-            userId: deviceIdentifier(uuid: UUID()),
-            attributes: properties,
-            eventTags: eventTags
-          )
       }
 
     createBackingData
@@ -649,22 +650,19 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
       }
 
     createBackingDataAndIsApplePay.takeWhen(createBackingCompletionEvents)
-      .observeValues { data, isApplePay in
-        let (properties, eventTags) = optimizelyTrackingAttributesAndEventTags(
-          with: data.project,
-          refTag: data.refTag
+      .observeValues { _, _ in
+        AppEnvironment.current.optimizelyClient?.track(eventName: "App Completed Checkout")
+      }
+
+    Signal.combineLatest(project, updateBackingData, context)
+      .takeWhen(updateButtonTapped)
+      .observeValues { project, data, context in
+        AppEnvironment.current.koala.trackPledgeSubmitButtonClicked(
+          project: project,
+          reward: data.reward,
+          context: TrackingHelpers.pledgeContext(for: context),
+          refTag: nil
         )
-
-        let allEventTags = eventTags
-          .withAllValuesFrom(optimizelyCheckoutEventTags(createBackingData: data, isApplePay: isApplePay))
-
-        try? AppEnvironment.current.optimizelyClient?
-          .track(
-            eventKey: "App Completed Checkout",
-            userId: deviceIdentifier(uuid: UUID()),
-            attributes: properties,
-            eventTags: allEventTags
-          )
       }
   }
 
@@ -704,9 +702,20 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
     self.paymentAuthorizationDidFinishObserver.send(value: ())
   }
 
+  private let (goToLoginSignupSignal, goToLoginSignupObserver) = Signal<Void, Never>.pipe()
+  public func goToLoginSignupTapped() {
+    self.goToLoginSignupObserver.send(value: ())
+  }
+
   private let (pledgeAmountDataSignal, pledgeAmountObserver) = Signal<PledgeAmountData, Never>.pipe()
   public func pledgeAmountViewControllerDidUpdate(with data: PledgeAmountData) {
     self.pledgeAmountObserver.send(value: data)
+  }
+
+  private let (pledgeDisclaimerViewDidTapLearnMoreSignal, pledgeDisclaimerViewDidTapLearnMoreObserver)
+    = Signal<Void, Never>.pipe()
+  public func pledgeDisclaimerViewDidTapLearnMore() {
+    self.pledgeDisclaimerViewDidTapLearnMoreObserver.send(value: ())
   }
 
   private let (scaFlowCompletedWithResultSignal, scaFlowCompletedWithResultObserver)
@@ -723,7 +732,7 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
   private let (stripeTokenSignal, stripeTokenObserver) = Signal<String?, Never>.pipe()
   private let (stripeErrorSignal, stripeErrorObserver) = Signal<Error?, Never>.pipe()
 
-  private let (submitButtonTappedSignal, submitButtonTappedObserver) = Signal<(), Never>.pipe()
+  private let (submitButtonTappedSignal, submitButtonTappedObserver) = Signal<Void, Never>.pipe()
   public func submitButtonTapped() {
     self.submitButtonTappedObserver.send(value: ())
   }
@@ -734,6 +743,11 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
     self.stripeErrorObserver.send(value: error)
 
     return self.createApplePayBackingStatusProperty.value
+  }
+
+  private let (termsOfUseTappedSignal, termsOfUseTappedObserver) = Signal<HelpType, Never>.pipe()
+  public func termsOfUseTapped(with helpType: HelpType) {
+    self.termsOfUseTappedObserver.send(value: helpType)
   }
 
   private let (userSessionStartedSignal, userSessionStartedObserver) = Signal<Void, Never>.pipe()
@@ -750,15 +764,15 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
 
   public let beginSCAFlowWithClientSecret: Signal<String, Never>
   public let configurePaymentMethodsViewControllerWithValue: Signal<PledgePaymentMethodsValue, Never>
+  public let configurePledgeAmountSummaryViewControllerWithData: Signal<PledgeAmountSummaryViewData, Never>
+  public let configurePledgeViewCTAContainerView: Signal<PledgeViewCTAContainerViewData, Never>
   public let configureStripeIntegration: Signal<StripeConfigurationData, Never>
-  public let configureSummaryViewControllerWithData: Signal<(Project, Double), Never>
+  public let configureSummaryViewControllerWithData: Signal<PledgeSummaryViewData, Never>
   public let configureWithData: Signal<(project: Project, reward: Reward), Never>
-  public let confirmationLabelAttributedText: Signal<NSAttributedString, Never>
-  public let confirmationLabelHidden: Signal<Bool, Never>
-  public let continueViewHidden: Signal<Bool, Never>
   public let descriptionViewHidden: Signal<Bool, Never>
   public let goToApplePayPaymentAuthorization: Signal<PaymentAuthorizationData, Never>
   public let goToThanks: Signal<ThanksPageData, Never>
+  public let goToLoginSignup: Signal<(LoginIntent, Project, Reward), Never>
   public let notifyDelegateUpdatePledgeDidSucceedWithMessage: Signal<String, Never>
   public let notifyPledgeAmountViewControllerShippingAmountChanged: Signal<Double, Never>
   public let paymentMethodsViewHidden: Signal<Bool, Never>
@@ -770,10 +784,7 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
   public let shippingLocationViewHidden: Signal<Bool, Never>
   public let showErrorBannerWithMessage: Signal<String, Never>
   public let showApplePayAlert: Signal<(String, String), Never>
-  public let submitButtonEnabled: Signal<Bool, Never>
-  public let submitButtonHidden: Signal<Bool, Never>
-  public let submitButtonIsLoading: Signal<Bool, Never>
-  public let submitButtonTitle: Signal<String, Never>
+  public let showWebHelp: Signal<HelpType, Never>
   public let title: Signal<String, Never>
 
   public var inputs: PledgeViewModelInputs { return self }
@@ -784,36 +795,6 @@ public class PledgeViewModel: PledgeViewModelType, PledgeViewModelInputs, Pledge
 
 private func requiresSCA(_ envelope: StripeSCARequiring) -> Bool {
   return envelope.requiresSCAFlow
-}
-
-private func attributedConfirmationString(with project: Project, pledgeTotal: Double) -> NSAttributedString {
-  let date = Format.date(secondsInUTC: project.dates.deadline, template: "MMMM d, yyyy")
-  let pledgeTotal = Format.currency(pledgeTotal, country: project.country)
-
-  let font = UIFont.ksr_caption1()
-  let foregroundColor = UIColor.ksr_text_dark_grey_500
-
-  let paragraphStyle = NSMutableParagraphStyle()
-  paragraphStyle.alignment = .center
-
-  let attributes = [
-    NSAttributedString.Key.paragraphStyle: paragraphStyle
-  ]
-
-  guard project.stats.needsConversion else {
-    return Strings.If_the_project_reaches_its_funding_goal_you_will_be_charged_on_project_deadline(
-      project_deadline: date
-    )
-    .attributed(with: font, foregroundColor: foregroundColor, attributes: attributes, bolding: [date])
-  }
-
-  return Strings.If_the_project_reaches_its_funding_goal_you_will_be_charged_total_on_project_deadline(
-    total: pledgeTotal,
-    project_deadline: date
-  )
-  .attributed(
-    with: font, foregroundColor: foregroundColor, attributes: attributes, bolding: [pledgeTotal, date]
-  )
 }
 
 // MARK: - Validation Functions
@@ -870,7 +851,13 @@ private func paymentMethodValid(
     return true
   }
 
-  return backedPaymentSourceId != paymentSourceId
+  if project.personalization.backing?.status == .errored {
+    return true
+  } else if backedPaymentSourceId != paymentSourceId {
+    return true
+  }
+
+  return false
 }
 
 private func allValuesChangedAndValid(
@@ -887,6 +874,19 @@ private func allValuesChangedAndValid(
 }
 
 // MARK: - Helper Functions
+
+private func pledgeAmountSummaryViewData(with project: Project) -> PledgeAmountSummaryViewData? {
+  guard let backing = project.personalization.backing else { return nil }
+
+  return .init(
+    projectCountry: project.country,
+    pledgeAmount: backing.amount,
+    pledgedOn: backing.pledgedAt,
+    shippingAmount: backing.shippingAmount.flatMap(Double.init),
+    locationName: backing.locationName,
+    omitUSCurrencyCode: project.stats.omitUSCurrencyCode
+  )
+}
 
 private func checkoutPropertiesData(
   from createBackingData: CreateBackingData,
@@ -909,8 +909,8 @@ private func checkoutPropertiesData(
   let rewardId = createBackingData.reward.id
   let estimatedDelivery = createBackingData.reward.estimatedDeliveryOn
   let paymentType = isApplePay
-    ? Backing.PaymentType.applePay.rawValue
-    : Backing.PaymentType.creditCard.rawValue
+    ? PaymentType.applePay.rawValue
+    : PaymentType.creditCard.rawValue
   let shippingEnabled = createBackingData.reward.shipping.enabled
   let shippingAmount = createBackingData.shippingRule?.cost
   let rewardTitle = createBackingData.reward.title
@@ -944,8 +944,8 @@ private func optimizelyCheckoutEventTags(
     .rounded()
 
   let paymentType = isApplePay
-    ? Backing.PaymentType.applePay.rawValue
-    : Backing.PaymentType.creditCard.rawValue
+    ? PaymentType.applePay.rawValue
+    : PaymentType.creditCard.rawValue
 
   return [
     "checkout_amount": pledgeTotal,

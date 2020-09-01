@@ -114,9 +114,9 @@ final class ProjectActivitiesViewModelTests: TestCase {
   }
 
   func testGoTo() {
-    let project = Project.template
+    let backing = Backing.template |> Backing.lens.projectId .~ Project.template.id
+    let project = Project.template |> Project.lens.personalization.backing .~ backing
     let comment = Comment.template
-    let backing = Backing.template |> Backing.lens.projectId .~ project.id
     let update = Update.template
     let user = User.template
 
@@ -177,24 +177,29 @@ final class ProjectActivitiesViewModelTests: TestCase {
 
       // Testing delegate methods
 
-      self.vm.inputs.projectActivityBackingCellGoToBacking(project: project, user: user)
+      self.vm.inputs.projectActivityBackingCellGoToBacking(project: project, backing: backing)
       self.goTo.assertValueCount(6, "Should go to backing")
 
       self.vm.inputs.projectActivityBackingCellGoToSendMessage(project: project, backing: backing)
       self.goTo.assertValueCount(7, "Should go to send message")
 
-      self.vm.inputs.projectActivityCommentCellGoToBacking(project: project, user: user)
-      self.goTo.assertValueCount(8, "Should go to backing")
-
       self.vm.inputs.projectActivityCommentCellGoToSendReply(project: project, update: nil, comment: comment)
-      self.goTo.assertValueCount(9, "Should go to comments for project")
+      self.goTo.assertValueCount(8, "Should go to comments for project")
 
       self.vm.inputs.projectActivityCommentCellGoToSendReply(
         project: project,
         update: update,
         comment: comment
       )
-      self.goTo.assertValueCount(10, "Should go to comments for update")
+      self.goTo.assertValueCount(9, "Should go to comments for update")
+
+      withEnvironment(apiService: MockService(fetchBackingResponse: .template)) {
+        self.vm.inputs.projectActivityCommentCellGoToBacking(project: project, user: user)
+
+        self.scheduler.advance()
+
+        self.goTo.assertValueCount(10, "Should go to backing after fetching backing")
+      }
     }
   }
 

@@ -126,6 +126,10 @@ public struct Project {
 
       return self.currency != currentCurrency
     }
+
+    public var goalMet: Bool {
+      return self.pledged >= self.goal
+    }
   }
 
   public struct MemberData {
@@ -317,7 +321,6 @@ extension Project.Category: Argo.Decodable {
 extension Project.Photo: Argo.Decodable {
   public static func decode(_ json: JSON) -> Decoded<Project.Photo> {
     let url1024: Decoded<String?> = ((json <| "1024x768") <|> (json <| "1024x576"))
-      // swiftlint:disable:next syntactic_sugar
       .map(Optional<String>.init)
       <|> .success(nil)
 
