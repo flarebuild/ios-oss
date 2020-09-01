@@ -58,6 +58,7 @@ public enum Navigation {
       case changeMethod
       case destroy
       case edit
+      case manage
       case new
       case root
     }
@@ -121,7 +122,6 @@ public func == (lhs: Navigation.Checkout.Payment, rhs: Navigation.Checkout.Payme
 }
 
 extension Navigation.Project: Equatable {}
-// swiftlint:disable:next cyclomatic_complexity
 public func == (lhs: Navigation.Project, rhs: Navigation.Project) -> Bool {
   switch (lhs, rhs) {
   case let (.checkout(lhsId, lhsCheckout), .checkout(rhsId, rhsCheckout)):
@@ -163,7 +163,7 @@ extension Navigation.Project.Pledge: Equatable {}
 public func == (lhs: Navigation.Project.Pledge, rhs: Navigation.Project.Pledge) -> Bool {
   switch (lhs, rhs) {
   case (.bigPrint, .bigPrint), (.changeMethod, .changeMethod), (.destroy, .destroy), (.edit, .edit),
-       (.new, .new), (.root, .root):
+       (.manage, .manage), (.new, .new), (.root, .root):
     return true
   default:
     return false
@@ -287,12 +287,12 @@ private let deepLinkRoutes: [String: (RouteParams) -> Decoded<Navigation>] = all
     "/projects/:creator_param/:project_param/posts/:update_param",
     "/projects/:creator_param/:project_param/posts/:update_param/comments",
     "/projects/:creator_param/:project_param/surveys/:survey_param",
+    "/projects/:creator_param/:project_param/pledge",
     "/users/:user_param/surveys/:survey_response_id"
   ]
 )
 
 extension Navigation.Project {
-  // swiftlint:disable conditional_binding_cascade
   public static func withRequest(_ request: URLRequest) -> (Param, RefTag?)? {
     guard let nav = Navigation.match(request), case let .project(project, .root, refTag) = nav
     else { return nil }
@@ -310,8 +310,6 @@ extension Navigation.Project {
     else { return nil }
     return (project, update)
   }
-
-  // swiftlint:enable conditional_binding_cascade
 }
 
 // MARK: - Router
@@ -503,9 +501,21 @@ private func pledgeNew(_ params: RouteParams) -> Decoded<Navigation> {
 }
 
 private func pledgeRoot(_ params: RouteParams) -> Decoded<Navigation> {
-  return curry(Navigation.project)
+  let parseRoot = curry(Navigation.project)
     <^> params <| "project_param"
     <*> .success(.pledge(.root))
+    <*> params <|? "ref"
+
+  guard
+    let value = parseRoot.value,
+    // inspect 'ref' to determine if this is an errored pledge.
+    case Navigation.project(_, _, .emailBackerFailedTransaction) = value else {
+    return parseRoot
+  }
+
+  return curry(Navigation.project)
+    <^> params <| "project_param"
+    <*> .success(.pledge(.manage))
     <*> params <|? "ref"
 }
 

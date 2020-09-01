@@ -144,13 +144,17 @@ public protocol ServiceType {
   func fetchGraphUserAccountFields(query: NonEmptySet<Query>)
     -> SignalProducer<UserEnvelope<GraphUser>, GraphError>
 
+  /// Fetch User's backings with a specific status.
+  func fetchGraphUserBackings(query: NonEmptySet<Query>)
+    -> SignalProducer<UserEnvelope<GraphBackingEnvelope>, GraphError>
+
   /// Fetch User's email fields object using graphQL.
   func fetchGraphUserEmailFields(query: NonEmptySet<Query>)
     -> SignalProducer<UserEnvelope<UserEmailFields>, GraphError>
 
-  /// Fetch User's backings with a specific status.
-  func fetchGraphUserBackings(query: NonEmptySet<Query>)
-    -> SignalProducer<UserEnvelope<GraphBackingEnvelope>, GraphError>
+  /// Fetch Backing data for ManagePledgeViewController
+  func fetchManagePledgeViewBacking(query: NonEmptySet<Query>)
+    -> SignalProducer<ManagePledgeViewBackingEnvelope, GraphError>
 
   /// Fetches all of the messages in a particular message thread.
   func fetchMessageThread(messageThreadId: Int)
@@ -293,6 +297,10 @@ public protocol ServiceType {
   func sendVerificationEmail(input: EmptyInput)
     -> SignalProducer<GraphMutationEmptyResponseEnvelope, GraphError>
 
+  /// Signin with Apple
+  func signInWithApple(input: SignInWithAppleInput)
+    -> SignalProducer<SignInWithAppleEnvelope, GraphError>
+
   /// Signup with email.
   func signup(
     name: String, email: String, password: String, passwordConfirmation: String,
@@ -375,7 +383,6 @@ extension ServiceType {
     var headers = self.defaultHeaders
 
     let method = request.httpMethod?.uppercased()
-    // swiftlint:disable:next force_unwrapping
     var components = URLComponents(url: URL, resolvingAgainstBaseURL: false)!
     var queryItems = components.queryItems ?? []
     queryItems.append(contentsOf: self.defaultQueryParams.map(URLQueryItem.init(name:value:)))
@@ -434,7 +441,6 @@ extension ServiceType {
 
     request.httpBody = "query=\(queryString)".data(using: .utf8)
 
-    // swiftlint:disable:next force_unwrapping
     let components = URLComponents(url: URL, resolvingAgainstBaseURL: false)!
     request.url = components.url
     request.allHTTPHeaderFields = self.defaultHeaders
@@ -477,7 +483,6 @@ extension ServiceType {
     var headers = self.defaultHeaders
     headers["Content-Type"] = "application/json; charset=utf-8"
 
-    // swiftlint:disable:next force_unwrapping
     let components = URLComponents(url: URL, resolvingAgainstBaseURL: false)!
     request.url = components.url
     request.allHTTPHeaderFields = headers

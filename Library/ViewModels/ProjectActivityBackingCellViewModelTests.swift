@@ -11,7 +11,7 @@ internal final class ProjectActivityBackingCellViewModelTests: TestCase {
   fileprivate let cellAccessibilityLabel = TestObserver<String, Never>()
   fileprivate let cellAccessibilityValue = TestObserver<String, Never>()
   fileprivate let defaultUser = User.template |> \.id .~ 90
-  fileprivate let notifyDelegateGoToBacking = TestObserver<(Project, User), Never>()
+  fileprivate let notifyDelegateGoToBacking = TestObserver<(Project, Backing), Never>()
   fileprivate let notifyDelegateGoToSendMessage = TestObserver<(Project, Backing), Never>()
   fileprivate let pledgeAmount = TestObserver<String, Never>()
   fileprivate let pledgeAmountLabelIsHidden = TestObserver<Bool, Never>()
@@ -309,7 +309,6 @@ internal final class ProjectActivityBackingCellViewModelTests: TestCase {
       |> Activity.lens.project .~ project
 
     self.vm.inputs.configureWith(activity: activity1, project: project)
-    // swiftlint:disable:next force_unwrapping
     let expected1 = Strings.dashboard_activity_reward_name(reward_name: reward1.title!)
     self.reward.assertValues([expected1], "Should emit reward title if present")
     self.rewardLabelIsHidden.assertValues([false])
